@@ -1,0 +1,34 @@
+version: "3.9" # Specifies the version of the Docker Compose file format
+
+name: "todo-api" # Name of the Docker Compose project
+
+services:
+  api:
+    build:
+      context: . # Specifies the build context, which is the current directory
+      dockerfile: Dockerfile # The Dockerfile to use for building the image
+    ports:
+      - "8000:8000" # Maps port 8000 on the host to port 8000 in the container
+    depends_on:
+      - postgresdb # Ensures that the postgresdb service is started before this service
+
+  postgresdb:
+    image: postgres:latest # Uses the official PostgreSQL image from Docker Hub
+    restart: always # Always restart the container if it stops
+    container_name: PostgresCont # Sets a custom name for the PostgreSQL container
+    environment:
+      - POSTGRES_USER=ziakhan # Sets the PostgreSQL user
+      - POSTGRES_PASSWORD=my_password # Sets the PostgreSQL password
+      - POSTGRES_DB=mydatabase # Sets the name of the PostgreSQL database
+    ports:
+      - "5433:5432" # Maps port 5433 on the host to port 5432 in the container
+    volumes:
+      - postgres_db:/var/lib/postgresql/data # Mounts a volume for persistent storage of PostgreSQL data
+
+volumes:
+  postgres_db:
+    driver: local # Specifies the use of a local driver for the volume
+
+networks:
+  default:
+    driver: bridge # Uses the default bridge network for container communication

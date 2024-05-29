@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "todo-practice"
+version = "0.1.0"
+description = ""
+authors = ["Ussaid Imtiaz <imtiazussaid@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.111.0"
+uvicorn = "^0.29.0"
+sqlmodel = "^0.0.18"
+psycopg = {extras = ["binary"], version = "^3.1.19"}
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
