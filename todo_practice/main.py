@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException
-from sqlmodel import SQLModel, Field, create_engine, Session, select
-from todo_practice import setting
+from sqlmodel import Session, select
 from typing import Annotated
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -8,37 +7,10 @@ from jose import jwt, JWTError
 from datetime import datetime, timedelta
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 
+from todo_practice.db import create_tables, get_session
+from todo_practice.models import Todo
+from todo_practice.route.user import user_router
 
-# Step-1: Create Database on Neon
-# Step-2: Create .env file for environment variables
-# Step-3: Create setting.py file for encrypting DatabaseURL
-
-# Create a variable using url as parameter and add psycopg with postgresql in url.
-connection_string: str = str(   # Convert URL into string
-    setting.DATABASE_URL
-    ).replace(      
-    "postgresql", 
-    "postgresql+psycopg"
-    )         
-
-# Step-4: Create engine using sqlmodel to create connection between SQLModel and Postgresql
-engine = create_engine( 
-    connection_string, 
-    # connect_args={"sslmode": "require"}, # use ssl(secure socket layer) to encrypt communication with DB.
-    pool_recycle=300, # SQL engine use pool of connections to minimise time of each request, recycle upto 5 mins (300seconds)
-    pool_size=10, 
-    echo=True
-    )  
-
-
-# Step-5: Create function for table creation. 
-def create_tables() -> None:
-    SQLModel.metadata.create_all(engine)    # Contents of Schema (with tables) is registered with metadata attribute of sqlmodel
-
-# Step-6: Create function for session management 
-def get_session():
-    with Session(engine) as session:        # With will auto close session.
-        yield session                       # yield (generator function) will iterate over sessions.
 
 # Step-7: Create contex manager for app lifespan
 @asynccontextmanager   # Allows you to run setup code before the application starts and teardown code after the application shuts down. 
@@ -62,11 +34,8 @@ app : FastAPI = FastAPI(
     ]
     ) 
 
-# Step-8: Create model class using tables to use as schema in APIs 
-class Todo(SQLModel, table = True):
-    id : int | None = Field(primary_key=True, default = None)
-    content: str = Field(index = True, min_length=3, max_length=54)
-    is_completed : bool = Field(default=False)
+# include user route in app to run from here
+app.include_router(router=user_router)
 
 
 # Step-9: Create all endpoints of todo app
@@ -130,11 +99,37 @@ async def delete_todo(id: int, session:Annotated[Session, Depends(get_session)])
     else:
         raise HTTPException(status_code=404, detail="No Task Found")
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Creating Access Token to give to user for authorisation 
-ALGORITHM: str = "HS256"
-SECRET_KEY: str = "A Secret Key"
-
-
 ALGORITHM: str = "HS256"  # Defining the algorithm used for JWT encoding
 SECRET_KEY: str = "A Secret Key"  # Defining the secret key for encoding and decoding JWTs
 
@@ -198,13 +193,14 @@ async def login_request(data_from_user: Annotated[OAuth2PasswordRequestForm, Dep
     return {"username": data_from_user.username, "access_token": generated_token}  # Returning the username and generated access token in a JSON response
 
 
-
+# Authentication using OAuth2PasswordBearer
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")  # Defining the OAuth2PasswordBearer scheme with the token URL pointing to the login endpoint
 
 @app.get("/special-item")  # Defining a GET endpoint to access a special item
 async def special_item(token: Annotated[str, Depends(oauth2_scheme)]):  # Asynchronous function to handle the request, extracting the token using the OAuth2PasswordBearer scheme
     decoded_data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])  # Decoding the JWT token to retrieve the payload using the secret key and algorithm
     return {"username": token, "decoded data": decoded_data}  # Returning the token and the decoded data in a JSON response
+
 
 
 
