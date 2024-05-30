@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+
 
 # Step-1: Create Database on Neon
 # Step-2: Create .env file for environment variables
@@ -133,32 +134,77 @@ async def delete_todo(id: int, session:Annotated[Session, Depends(get_session)])
 ALGORITHM: str = "HS256"
 SECRET_KEY: str = "A Secret Key"
 
-def create_access_token(subject: str, expires_delta: timedelta):
-    expire = datetime.utcnow() + expires_delta
-    to_encode = {"exp": expire, "sub": str(subject)}
-    encode_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encode_jwt
 
-@app.get("/get-token")
-async def get_access_token(name: str):
-    token_expiry = timedelta(minutes=1)
-    print("Access Token Expiry Time", token_expiry)
-    generated_token = create_access_token(subject=name, expires_delta=token_expiry)
-    return {"Access Token": generated_token}
+ALGORITHM: str = "HS256"  # Defining the algorithm used for JWT encoding
+SECRET_KEY: str = "A Secret Key"  # Defining the secret key for encoding and decoding JWTs
 
-def decode_access_token(token:str):
-    decoded_jwt = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    return decoded_jwt
+def create_access_token(subject: str, expires_delta: timedelta):  # Function to create a JWT access token
+    expire = datetime.utcnow() + expires_delta  # Setting the token expiry time
+    to_encode = {"exp": expire, "sub": str(subject)}  # Creating the payload with expiry time and subject
+    encode_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)  # Encoding the payload to create JWT
+    return encode_jwt  # Returning the generated JWT
 
-@app.get("/decode-token")
-async def decode_token(token:str):
-    try:
-        decoded_data = decode_access_token(token)
-        return decoded_data
-    except JWTError as e:
-        return {"error": str(e)}
+@app.get("/get-token")  # Defining a GET endpoint to generate an access token
+async def get_access_token(name: str):  # Asynchronous function to handle the token generation request
+    token_expiry = timedelta(minutes=1)  # Setting the token expiry time to 1 minute
+    print("Access Token Expiry Time", token_expiry)  # Printing the token expiry time to the console
+    generated_token = create_access_token(subject=name, expires_delta=token_expiry)  # Creating the access token
+    return {"Access Token": generated_token}  # Returning the generated token in a JSON response
+
+def decode_access_token(token: str):  # Function to decode a JWT access token
+    decoded_jwt = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])  # Decoding the JWT using the secret key and algorithm
+    return decoded_jwt  # Returning the decoded JWT payload
+
+@app.get("/decode-token")  # Defining a GET endpoint to decode an access token
+async def decode_token(token: str):  # Asynchronous function to handle the token decoding request
+    try:  # Trying to decode the token
+        decoded_data = decode_access_token(token)  # Decoding the access token
+        return decoded_data  # Returning the decoded data in a JSON response
+    except JWTError as e:  # Handling JWT errors
+        return {"error": str(e)}  # Returning the error message in a JSON response
 
 
-@app.post("/login")
-async def login_request(data_from_user: Annotated[OAuth2PasswordRequestForm, Depends(OAuth2PasswordRequestForm)]):
-    return {"username": data_from_user.username, "password": data_from_user.password}
+fake_users_db: dict[str, dict[str, str]] = {
+    "ameenalam": {
+        "username": "ameenalam",
+        "full_name": "Ameen Alam",
+        "email": "ameenalam@example.com",
+        "password": "ameenalamsecret",
+    },
+    "mjunaid": {
+        "username": "mjunaid",
+        "full_name": "Muhammad Junaid",
+        "email": "mjunaid@example.com",
+        "password": "mjunaidsecret",
+    },
+}
+
+@app.post("/login")  # Defining a POST endpoint for user login
+async def login_request(data_from_user: Annotated[OAuth2PasswordRequestForm, Depends(OAuth2PasswordRequestForm)]):  # Asynchronous function to handle the login request, using OAuth2PasswordRequestForm for user credentials
+    
+    # Step 1 : Validate user credentials from DB
+    user_in_db = fake_users_db.get(data_from_user.username)  # Checking if the username exists in the fake database
+    if user_in_db is None:  # If username is not found
+        raise HTTPException(status_code=400, detail="Incorrect username")  # Raise an HTTP exception with status code 400 and error message
+
+    # Step 2 : Validate password from DB
+    if user_in_db["password"] != data_from_user.password:  # Checking if the provided password matches the stored password
+        raise HTTPException(status_code=400, detail="Incorrect password")  # Raise an HTTP exception with status code 400 and error message
+    
+    # Step 3 : Create access token
+    token_expiry = timedelta(minutes=1)  # Setting the token expiry time to 1 minute
+    generated_token = create_access_token(subject=data_from_user.username, expires_delta=token_expiry)  # Creating the access token using the provided username and expiry time
+
+    return {"username": data_from_user.username, "access_token": generated_token}  # Returning the username and generated access token in a JSON response
+
+
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")  # Defining the OAuth2PasswordBearer scheme with the token URL pointing to the login endpoint
+
+@app.get("/special-item")  # Defining a GET endpoint to access a special item
+async def special_item(token: Annotated[str, Depends(oauth2_scheme)]):  # Asynchronous function to handle the request, extracting the token using the OAuth2PasswordBearer scheme
+    decoded_data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])  # Decoding the JWT token to retrieve the payload using the secret key and algorithm
+    return {"username": token, "decoded data": decoded_data}  # Returning the token and the decoded data in a JSON response
+
+
+

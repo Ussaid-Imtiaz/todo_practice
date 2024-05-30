@@ -1,35 +1,52 @@
-# poetry add fastapi, sqlmodel, uvicorn, "pycopg[binary]"
+## A Poetry Project Using FastAPI, Postgres Database, Docker, Kafka, Kong,
 
-# Create Database on Neon
+### Create New Poetry Project
 
-# Create .env file for environment variables
+poetry new daily_todo
 
-# Create setting.py file for encrypting DatabaseURL
+make a file main.py
 
-# Create a variable using url as parameter and add psycopg with postgresql in url.
+cd daily_todo
 
-# Step-4: Create engine using sqlmodel to create connection between SQLModel and Postgresql
+poetry add fastapi, sqlmodel, uvicorn, "pycopg[binary]", sqlmodel
 
-# Step-5: Create function for table creation.
+### Use FastAPI
 
-# Step-6: Create function for session management
+Write the code of FastAPI in main.py
 
-# Step-7: Create contex manager for app lifespan
+Define different endpoints
 
-# Create instance of FastAPI class
+Use authentication and authorisation (OAuth2)
 
-# Step-8: Create model class using tables to use as schema in APIs
+### Create Database
 
-# Step-9: Create all endpoints of todo app
+Create Account on Neon Database
 
-# install and run docker desktop
+Create .env file for environment variables and copy URL from Neon and paste it here
 
-# Make a docker file
+Create setting.py file for encrypting DatabaseURL
 
-# (Optional) To Build image -> docker build -f Dockerfile -t my-todo-image .
+### Use Docker
 
-# (Optional) To Run the container -> docker run -d --name todo-cont -p 8000:8000 my-todo-image
+install and run docker desktop
 
-# Create compose.yaml file
+Make a `Dockerfile.dev` file
 
-# Run docker compose up -d -> (detatch mode)
+(Optional) To Build image -> `docker build -f Dockerfile -t my-todo-image .`
+
+(Optional) To Run the container -> `docker run -d --name todo-cont -p 8000:8000 my-todo-image`
+
+Create `compose.yaml` file
+
+Run `docker compose up -d` -> (detatch mode)
+
+Use Dev Containers of VS Code
+
+### Run in browser
+
+`poetry run uvicorn todo_practice.main:app --host 127.0.0.1 --port 8000 --reload`
+(-- reload for auto reload upon changes in code)
+(-- host can also be localhost or 0.0.0.0)
+(-- port can be any port upto 65000)
+
+write [http://127.0.0.1:8000/docs] and click try it out. It will show what is in return statement
