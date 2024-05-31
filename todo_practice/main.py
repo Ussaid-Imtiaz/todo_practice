@@ -1,17 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException
-from sqlmodel import Session, select
-from typing import Annotated
+from sqlmodel import Session, select, SQLModel, create_engine, Session, Field
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
-from sqlmodel import SQLModel, create_engine, Session
 from todo_practice import setting
-from pydantic import BaseModel
-from sqlmodel import SQLModel, Field
-from fastapi.security import OAuth2PasswordRequestForm
-from fastapi import Form
 from typing import Annotated
 
 # Step-1: Create Database on Neon
