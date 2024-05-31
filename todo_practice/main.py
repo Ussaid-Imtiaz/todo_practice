@@ -1,14 +1,13 @@
-from fastapi import FastAPI, Depends, HTTPException
-from sqlmodel import Session, select
-from typing import Annotated
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
-from jose import jwt, JWTError
-from datetime import datetime, timedelta
+from datetime import timedelta
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from todo_practice.auth import EXPIRY_TIME, authenticate_user, create_access_token
-from todo_practice.db import create_tables, get_session
-from todo_practice.models import Todo, Token
+from sqlmodel import SQLModel, Field, create_engine, Session, select
+from todo_practice import setting
+from typing import Annotated, AsyncGenerator
+from contextlib import asynccontextmanager
+from todo_practice.auth import EXPIRY_TIME, authenticate_user, create_access_token, current_user, validate_refresh_token, create_refresh_token
+from todo_practice.db import get_session, create_tables
+from todo_practice.models import Todo, Todo_Create, Todo_Edit, Token, User
 from todo_practice.route.user import user_router
 
 
@@ -44,172 +43,125 @@ async def root():
     return {"Hello" : "This is daily Do Todo app."}
 
 
-@app.post("/todo", response_model=Todo)  # response will be validated by Todo schema
-# users can create todos using Todo class schema and get session function (provided as dependancy injection(session depends on get_session)). 
-async def create_todo(todo: Todo, session: Annotated[Session,Depends(get_session)]) -> Todo:   # Annotated used to create custom type.
-    session.add(todo)
-    session.commit()
-    session.refresh(todo)
-    return todo
+@app.post('/token', response_model=Token)
+async def login(form_data:Annotated[OAuth2PasswordRequestForm, Depends()],
+                session:Annotated[Session, Depends(get_session)]):
+    user = authenticate_user (form_data.username, form_data.password, session)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    expire_time = timedelta(minutes=EXPIRY_TIME)
+    access_token = create_access_token({"sub":form_data.username}, expire_time)
 
-@app.get("/todos", response_model=list[Todo]) # List of Todos will be returned.
-async def get_all(session:Annotated[Session, Depends(get_session)]):
-    # SQLModel queries: Select all Todos and execute all
-    statement = select(Todo)
-    todos = session.exec(statement).all()
+    refresh_expire_time = timedelta(days=7)
+    refresh_token = create_refresh_token({"sub":user.email}, refresh_expire_time)
+
+    return Token(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
+
+@app.post("/token/refresh")
+def refresh_token(old_refresh_token:str,
+                  session:Annotated[Session, Depends(get_session)]):
+    
+    credential_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid token, Please login again",
+        headers={"www-Authenticate":"Bearer"}
+    )
+    
+    user = validate_refresh_token(old_refresh_token,
+                                  session)
+    if not user:
+        raise credential_exception
+    
+    expire_time = timedelta(minutes=EXPIRY_TIME)
+    access_token = create_access_token({"sub":user.username}, expire_time)
+
+    refresh_expire_time = timedelta(days=7)
+    refresh_token = create_refresh_token({"sub":user.email}, refresh_expire_time)
+
+    return Token(access_token=access_token, token_type= "bearer", refresh_token=refresh_token)
+
+
+
+@app.post('/todos/', response_model=Todo)
+async def create_todo(current_user:Annotated[User, Depends(current_user)],
+                      todo: Todo_Create, 
+                      session: Annotated[Session, Depends(get_session)]):
+    
+    new_todo = Todo(content=todo.content, user_id=current_user.id)
+    
+    session.add(new_todo)
+    session.commit()
+    session.refresh(new_todo)
+    return new_todo
+
+
+@app.get('/todos/', response_model=list[Todo])
+async def get_all(current_user:Annotated[User, Depends(current_user)],
+                  session: Annotated[Session, Depends(get_session)]):
+    
+    
+    todos = session.exec(select(Todo).where(Todo.user_id == current_user.id)).all()
+
     if todos:
         return todos
     else:
-        raise HTTPException(status_code=404, detail="No Task Found")
+        raise HTTPException(status_code=404, detail="No Task found")
 
-@app.get("/todos/{id}", response_model=Todo )
-async def get_one(id: int ,session:Annotated[Session, Depends(get_session)]):
-    # SQLModel queries: Select Todo of given id and execute first result
-    statement = select(Todo).where(Todo.id == id)
-    todo = session.exec(statement).first()
+
+@app.get('/todos/{id}', response_model=Todo)
+async def get_single_todo(id: int, 
+                          current_user:Annotated[User, Depends(current_user)],
+                          session: Annotated[Session, Depends(get_session)]):
+    
+    user_todos = session.exec(select(Todo).where(Todo.user_id == current_user.id)).all()
+    matched_todo = next((todo for todo in user_todos if todo.id == id),None)
+
+    if matched_todo:
+        return matched_todo
+    else:
+        raise HTTPException(status_code=404, detail="No Task found")
+
+
+@app.put('/todos/{id}')
+async def edit_todo(id: int, 
+                    todo: Todo_Edit,
+                    current_user:Annotated[User, Depends(current_user)], 
+                    session: Annotated[Session, Depends(get_session)]):
+    
+    user_todos = session.exec(select(Todo).where(Todo.user_id == current_user.id)).all()
+    existing_todo = next((todo for todo in user_todos if todo.id == id),None)
+
+    if existing_todo:
+        existing_todo.content = todo.content
+        existing_todo.is_completed = todo.is_completed
+        session.add(existing_todo)
+        session.commit()
+        session.refresh(existing_todo)
+        return existing_todo
+    else:
+        raise HTTPException(status_code=404, detail="No task found")
+
+
+@app.delete('/todos/{id}')
+async def delete_todo(id: int,
+                      current_user:Annotated[User, Depends(current_user)],
+                      session: Annotated[Session, Depends(get_session)]):
+    
+    user_todos = session.exec(select(Todo).where(Todo.user_id == current_user.id)).all()
+    todo = next((todo for todo in user_todos if todo.id == id),None)
+    
     if todo:
-        return todo
-    else:
-        raise HTTPException(status_code=404, detail="No Task Found")
-
-@app.put("/todos/{id}", response_model=Todo )
-async def edit_one(id: int, edited_todo_by_user:Todo, session:Annotated[Session, Depends(get_session)]):
-    # SQLModel queries: Select Todo of given id and execute first result
-    statement = select(Todo).where(Todo.id == id)
-    todo_for_edit = session.exec(statement).first()
-    if todo_for_edit:
-        todo_for_edit.content = edited_todo_by_user.content    #edited_todo_by_user.content coming from function parameter which user will input
-        todo_for_edit.is_completed = edited_todo_by_user.is_completed    #edited_todo_by_user..is_completed coming from function parameter which user will input
-        # for posting new edited todo 
-        session.add(todo_for_edit)
+        session.delete(todo)
         session.commit()
-        session.refresh(todo_for_edit) # to return from database
-        return todo_for_edit
+        # session.refresh(todo)
+        return {"message": "Task successfully deleted"}
     else:
-        raise HTTPException(status_code=404, detail="No Task Found")
-    
-@app.delete("/todos{id}")
-async def delete_todo(id: int, session:Annotated[Session, Depends(get_session)]):
-    statement = select(Todo).where(Todo.id == id)
-    todo_to_delete = session.exec(statement).first()
-    if todo_to_delete:
-        session.delete(todo_to_delete)
-        session.commit()
-        return {"message": "Task Deleted Successfully"}
-    else:
-        raise HTTPException(status_code=404, detail="No Task Found")
-
-
-# login functionality
-@app.post("/token", response_model=Token)
-async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], session: Annotated[Session, Depends(get_session)]):
-    user = authenticate_user(form_data.username, form_data.password, session)
-    if not user:
-        raise HTTPException(status_code=404, detail="Invalid username or password")
-
-    expiry_time = timedelta(minutes=EXPIRY_TIME)
-    access_token = create_access_token({"sub" :form_data.username}, expiry_time)
-    return Token(access_token=access_token, token_type="bearer")
+        raise HTTPException(status_code=404, detail="No task found")
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# # Creating Access Token to give to user for authorisation 
-# ALGORITHM: str = "HS256"  # Defining the algorithm used for JWT encoding
-# SECRET_KEY: str = "A Secret Key"  # Defining the secret key for encoding and decoding JWTs
-
-# def create_access_token(subject: str, expires_delta: timedelta):  # Function to create a JWT access token
-#     expire = datetime.utcnow() + expires_delta  # Setting the token expiry time
-#     to_encode = {"exp": expire, "sub": str(subject)}  # Creating the payload with expiry time and subject
-#     encode_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)  # Encoding the payload to create JWT
-#     return encode_jwt  # Returning the generated JWT
-
-# @app.get("/get-token")  # Defining a GET endpoint to generate an access token
-# async def get_access_token(name: str):  # Asynchronous function to handle the token generation request
-#     token_expiry = timedelta(minutes=1)  # Setting the token expiry time to 1 minute
-#     print("Access Token Expiry Time", token_expiry)  # Printing the token expiry time to the console
-#     generated_token = create_access_token(subject=name, expires_delta=token_expiry)  # Creating the access token
-#     return {"Access Token": generated_token}  # Returning the generated token in a JSON response
-
-# def decode_access_token(token: str):  # Function to decode a JWT access token
-#     decoded_jwt = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])  # Decoding the JWT using the secret key and algorithm
-#     return decoded_jwt  # Returning the decoded JWT payload
-
-# @app.get("/decode-token")  # Defining a GET endpoint to decode an access token
-# async def decode_token(token: str):  # Asynchronous function to handle the token decoding request
-#     try:  # Trying to decode the token
-#         decoded_data = decode_access_token(token)  # Decoding the access token
-#         return decoded_data  # Returning the decoded data in a JSON response
-#     except JWTError as e:  # Handling JWT errors
-#         return {"error": str(e)}  # Returning the error message in a JSON response
-
-
-# fake_users_db: dict[str, dict[str, str]] = {
-#     "ameenalam": {
-#         "username": "ameenalam",
-#         "full_name": "Ameen Alam",
-#         "email": "ameenalam@example.com",
-#         "password": "ameenalamsecret",
-#     },
-#     "mjunaid": {
-#         "username": "mjunaid",
-#         "full_name": "Muhammad Junaid",
-#         "email": "mjunaid@example.com",
-#         "password": "mjunaidsecret",
-#     },
-# }
-
-# @app.post("/login")  # Defining a POST endpoint for user login
-# async def login_request(data_from_user: Annotated[OAuth2PasswordRequestForm, Depends(OAuth2PasswordRequestForm)]):  # Asynchronous function to handle the login request, using OAuth2PasswordRequestForm for user credentials
-    
-#     # Step 1 : Validate user credentials from DB
-#     user_in_db = fake_users_db.get(data_from_user.username)  # Checking if the username exists in the fake database
-#     if user_in_db is None:  # If username is not found
-#         raise HTTPException(status_code=400, detail="Incorrect username")  # Raise an HTTP exception with status code 400 and error message
-
-#     # Step 2 : Validate password from DB
-#     if user_in_db["password"] != data_from_user.password:  # Checking if the provided password matches the stored password
-#         raise HTTPException(status_code=400, detail="Incorrect password")  # Raise an HTTP exception with status code 400 and error message
-    
-#     # Step 3 : Create access token
-#     token_expiry = timedelta(minutes=1)  # Setting the token expiry time to 1 minute
-#     generated_token = create_access_token(subject=data_from_user.username, expires_delta=token_expiry)  # Creating the access token using the provided username and expiry time
-
-#     return {"username": data_from_user.username, "access_token": generated_token}  # Returning the username and generated access token in a JSON response
-
-
-# # Authentication using OAuth2PasswordBearer
-# oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")  # Defining the OAuth2PasswordBearer scheme with the token URL pointing to the login endpoint
-
-# @app.get("/special-item")  # Defining a GET endpoint to access a special item
-# async def special_item(token: Annotated[str, Depends(oauth2_scheme)]):  # Asynchronous function to handle the request, extracting the token using the OAuth2PasswordBearer scheme
-#     decoded_data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])  # Decoding the JWT token to retrieve the payload using the secret key and algorithm
-#     return {"username": token, "decoded data": decoded_data}  # Returning the token and the decoded data in a JSON response
 
 
 
