@@ -206,4 +206,8 @@ async def special_item(token: Annotated[str, Depends(oauth2_scheme)]):  # Asynch
 
 
 
+# Kafka 
+
+
+
 
