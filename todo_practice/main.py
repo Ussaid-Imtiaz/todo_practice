@@ -1,8 +1,7 @@
 from datetime import timedelta
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlmodel import SQLModel, Field, create_engine, Session, select
-from todo_practice import setting
+from sqlmodel import Session, select
 from typing import Annotated, AsyncGenerator
 from contextlib import asynccontextmanager
 from todo_practice.auth import EXPIRY_TIME, authenticate_user, create_access_token, current_user, validate_refresh_token, create_refresh_token
