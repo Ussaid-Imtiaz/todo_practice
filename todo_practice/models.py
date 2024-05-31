@@ -25,4 +25,8 @@ class Register_User(BaseModel):
     password: Annotated[str, Form()]
 
 
+class Token(BaseModel):
+    access_token : str
+    token_type : str
+
 

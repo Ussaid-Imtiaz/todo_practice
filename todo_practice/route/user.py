@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Annotated
-
 from sqlmodel import Session
 from todo_practice.db import get_session
 from todo_practice.models import Register_User, User
 from todo_practice.auth import get_user_from_db, hash_pwd
+from fastapi.security import OAuth2PasswordBearer
 
 
 user_router = APIRouter(
@@ -17,6 +17,7 @@ user_router = APIRouter(
 async def root():
     return {"message": "Wellcome to Users Page"}
 
+# Register User by checking if user already exists in database
 @user_router.post("/register")
 async def register_user(new_user: Annotated[Register_User, Depends()], session: Annotated[Session, Depends(get_session)]):
 
@@ -31,6 +32,11 @@ async def register_user(new_user: Annotated[Register_User, Depends()], session: 
     session.refresh(user)
     
     return {"message": f""" User with {user.username} successfully registered"""}
+
+
+# @user_router.get("/me")
+# async def user_profile(current_user: Annotated[User, Depends(oauth2_scheme)]):
+#     return {"message": "Hello World"}
 
 
 
